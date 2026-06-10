@@ -14,6 +14,13 @@ RSS_FEEDS = [
     ('Habr Карьера', 'https://habr.com/ru/rss/hub/career/'),
     ('Habr Обучение', 'https://habr.com/ru/rss/hub/education/'),
     ('Habr IT', 'https://habr.com/ru/rss/all/'),
+    ('АНО «Россия — страна возможностей»', 'https://rsv.ru/?spm=a2ty_o01.29997173.0.0.6feb55fb35LYbw'),
+    ('Timepad', 'https://timepad.ru/?spm=a2ty_o01.29997173.0.0.6feb55fb35LYbw'),
+    ('Aroundo', 'https://aroundo.ru/?spm=a2ty_o01.29997173.0.0.6feb55fb35LYbw'),
+    ('Олимпиада «IT-Планета»', 'https://www.it-planeta.org/?spm=a2ty_o01.29997173.0.0.6feb55fb35LYbw'),
+    ('TAdviser', 'https://www.tadviser.ru/index.php/Article:Календарь_мероприятий?spm=a2ty_o01.29997173.0.0.6feb55fb35LYbw'),
+    ('CNews', 'https://events.cnews.ru/?spm=a2ty_o01.29997173.0.0.6feb55fb35LYbw'),
+    ('VC.ru', 'https://vc.ru/?spm=a2ty_o01.29997173.0.0.6feb55fb35LYbw'),
 ]
 
 # Расширенные ключевые слова (теперь ищем ИЛИ, не И)
