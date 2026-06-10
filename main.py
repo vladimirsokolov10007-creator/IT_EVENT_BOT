@@ -7,21 +7,27 @@ from datetime import datetime, timedelta
 BOT_TOKEN = '8925355466:AAFwGby1v-t-JGbCbUnjbt_2aM9JTsnHU_U' 
 CHAT_ID = '908014386' 
 
+# Расширенный список источников
 RSS_FEEDS = [
     ('IT-events.com', 'https://it-events.com/ru/events/rss'),
     ('Habr Митапы', 'https://habr.com/ru/rss/hub/meetups/'),
     ('Habr Карьера', 'https://habr.com/ru/rss/hub/career/'),
     ('Habr Обучение', 'https://habr.com/ru/rss/hub/education/'),
+    ('Habr IT', 'https://habr.com/ru/rss/all/'),
 ]
 
+# Расширенные ключевые слова (теперь ищем ИЛИ, не И)
 KEYWORDS = [
     'хакатон', 'олимпиада', 'конкурс', 'митап', 'соревнован', 'чемпионат', 
-    'воркшоп', 'квиз', 'hackathon', 'meetup', 'contest', 'coding'
+    'воркшоп', 'квиз', 'конференц', 'форум', 'встреча', 'семинар',
+    'hackathon', 'meetup', 'contest', 'conference', 'workshop',
+    'программирован', 'разработ', 'код', 'coding', 'it-событ', 'it-мероприят'
 ]
 
+# Локация (опционально - если не найдём, всё равно покажем)
 LOCATION_KEYWORDS = [
     'москва', 'moscow', 'онлайн', 'online', 'россия', 'russia', 'мск', 
-    'спб', 'санкт-петербург', 'удалённ', 'remote'
+    'спб', 'санкт-петербург', 'удалённ', 'remote', 'дистанцион'
 ]
 
 def send_to_telegram(message):
@@ -29,7 +35,7 @@ def send_to_telegram(message):
     payload = {
         "chat_id": CHAT_ID,
         "text": message,
-        "parse_mode": "HTML"  # Используем HTML вместо Markdown
+        "parse_mode": "HTML"
     }
     try:
         response = requests.post(url, json=payload)
@@ -39,7 +45,6 @@ def send_to_telegram(message):
         print(f"❌ Ошибка Telegram: {e}")
 
 def escape_html(text):
-    """Экранирует специальные HTML-символы"""
     if not text:
         return ""
     return (text
@@ -80,30 +85,40 @@ def extract_theme(text):
     return "IT (общая)"
 
 def main():
-    report = "<b>🗓 ИТ-мероприятия в России (Москва/Онлайн)</b>\n"
+    report = "<b>🗓 ИТ-мероприятия</b>\n"
     report += f"<i>{datetime.now().strftime('%d.%m.%Y')}</i>\n\n"
     
     events_found = 0
+    debug_info = []
     today = datetime.now()
-    next_week = today + timedelta(days=14)
+    next_week = today + timedelta(days=30)  # Расширили до 30 дней
     
     for feed_name, feed_url in RSS_FEEDS:
         try:
             feed = feedparser.parse(feed_url)
             
-            for entry in feed.entries[:30]:
+            for entry in feed.entries[:20]:
                 title = entry.get('title', '')
                 summary = entry.get('summary', '')
                 full_text = (title + " " + summary).lower()
                 
+                # Проверяем ключевые слова (ОДНО из списка достаточно)
                 has_keyword = any(k in full_text for k in KEYWORDS)
+                
+                # Проверяем локацию (опционально)
                 has_location = any(l in full_text for l in LOCATION_KEYWORDS)
                 
-                if has_keyword and has_location:
+                # Сохраняем для отладки
+                if len(debug_info) < 5:
+                    debug_info.append(f"• {title[:80]}")
+                
+                # Теперь принимаем событие, если есть ключевое слово (локация опциональна)
+                if has_keyword:
                     parsed_date = entry.get('published_parsed') or entry.get('updated_parsed')
                     
                     if parsed_date:
                         event_date = datetime(*parsed_date[:6])
+                        # Расширили диапазон до 30 дней
                         if not (today <= event_date <= next_week):
                             continue
                         date_display = event_date.strftime('%d.%m.%Y')
@@ -115,12 +130,11 @@ def main():
                     prize = extract_prize(summary)
                     theme = extract_theme(full_text)
                     
-                    # Экранируем HTML и формируем сообщение
                     safe_title = escape_html(title)
                     safe_org = escape_html(org)
                     
                     report += f"<b>🔹 {safe_title}</b>\n"
-                    report += f"📅 <b>Срок проведения:</b> {date_display}\n"
+                    report += f"📅 <b>Дата:</b> {date_display}\n"
                     report += f"🏢 <b>Организатор:</b> {safe_org}\n"
                     report += f"💰 <b>Призовой фонд:</b> {prize}\n"
                     report += f"🎯 <b>Тематика:</b> {theme}\n"
@@ -140,8 +154,12 @@ def main():
     if events_found > 0:
         report += f"<i>✅ Найдено событий: {events_found}</i>"
     else:
-        report = "🔍 <b>На ближайшие 2 недели подходящих событий не найдено.</b>\n\n"
-        report += "<i>Попробуйте расширить списки KEYWORDS и LOCATION_KEYWORDS в main.py</i>"
+        # Если ничего не найдено, показываем отладочную информацию
+        report = "🔍 <b>События не найдены.</b>\n\n"
+        report += "<b>Последние заголовки в RSS-лентах:</b>\n\n"
+        for item in debug_info:
+            report += f"{escape_html(item)}\n"
+        report += "\n<i>Попробуйте расширить KEYWORDS в main.py</i>"
     
     send_to_telegram(report)
 
