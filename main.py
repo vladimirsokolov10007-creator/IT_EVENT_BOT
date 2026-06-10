@@ -1,29 +1,10 @@
-import feedparser
 import requests
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 
 # --- НАСТРОЙКИ ---
 BOT_TOKEN = '8925355466:AAFwGby1v-t-JGbCbUnjbt_2aM9JTsnHU_U' 
 CHAT_ID = '908014386' 
-
-# РОССИЙСКИЕ ИСТОЧНИКИ (Timepad, Habr и др.)
-RSS_FEEDS = [
-    ('Timepad IT Москва', 'https://timepad.ru/api/2/events/?search[city_id]=1&search[is_free]=false&search[limit]=20&search[order_by]=start_date&search[status]=active&search[tags]=it'),
-    ('Habr Митапы', 'https://habr.com/ru/rss/hub/meetups/'),
-    ('Habr Карьера', 'https://habr.com/ru/rss/hub/career/'),
-    ('Habr Обучение', 'https://habr.com/ru/rss/hub/education/'),
-    ('VC.ru Мероприятия', 'https://vc.ru/rss'),
-]
-
-# Ключевые слова для российских событий
-KEYWORDS = [
-    'хакатон', 'олимпиада', 'конкурс', 'митап', 'соревнован', 'чемпионат', 'конференц',
-    'воркшоп', 'мк', 'мастер-класс', 'встреча', 'митап', 'хакатон', 'coding', 'программирован',
-    'hackathon', 'meetup', 'olympiad', 'квиз', 'чемпионат'
-]
-
-# Ключевые слова для фильтрации по Москве/России
-LOCATION_KEYWORDS = ['москва', 'moscow', 'онлайн', 'online', 'россия', 'russia', 'мск']
 
 def send_to_telegram(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -39,59 +20,123 @@ def send_to_telegram(message):
     except Exception as e:
         print(f"❌ Ошибка отправки в Telegram: {e}")
 
-def main():
-    report = "🗓 *ИТ-мероприятия в Москве и онлайн*\n"
-    report += f"_{datetime.now().strftime('%d.%m.%Y')}_\n\n"
+def extract_prize_from_description(description):
+    """Извлекает призовой фонд из описания"""
+    if not description:
+        return "Не указан"
     
-    events_found = 0
-    debug_info = ""
+    # Ищем паттерны типа "500 000 рублей", "1000000 руб", "призовой фонд 300к"
+    patterns = [
+        r'призовой\s+фонд[:\s]*([\d\s]+(?:тыс|млн|k|m)?)\s*(?:руб|₽|rur)?',
+        r'приз[:\s]*([\d\s]+(?:тыс|млн|k|m)?)\s*(?:руб|₽|rur)?',
+        r'([\d\s]+(?:тыс|млн|k|m)?)\s*(?:руб|₽|rur)',
+        r'выигрыш[:\s]*([\d\s]+(?:тыс|млн|k|m)?)\s*(?:руб|₽|rur)?'
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, description, re.IGNORECASE)
+        if match:
+            prize = match.group(1).strip()
+            return f"💰 {prize} руб"
+    
+    return "Не указан"
 
-    for feed_name, feed_url in RSS_FEEDS:
-        try:
-            feed = feedparser.parse(feed_url)
-            
-            for entry in feed.entries[:20]: 
-                title = entry.get('title', '').lower()
-                summary = entry.get('summary', '').lower()
-                full_text = title + " " + summary
-                
-                # Проверяем наличие ключевых слов И локацию (Москва/онлайн/Россия)
-                has_keyword = any(keyword in full_text for keyword in KEYWORDS)
-                has_location = any(loc in full_text for loc in LOCATION_KEYWORDS)
-                
-                # Сохраняем для отладки
-                if len(debug_info.split('\n')) < 10:  # Только первые 10 заголовков
-                    debug_info += f"  • {entry.get('title', 'Без названия')[:60]}...\n"
+def extract_theme_from_description(description, title):
+    """Определяет тематику из описания или названия"""
+    themes = {
+        'AI': ['искусственн', 'нейросет', 'machine learning', 'ai ', 'chatgpt', 'llm'],
+        'Data Science': ['data science', 'анализ данных', 'big data', 'дата сайенс'],
+        'Web': ['web', 'веб', 'frontend', 'backend', 'react', 'vue', 'angular'],
+        'Mobile': ['mobile', 'мобильн', 'ios', 'android', 'flutter'],
+        'Blockchain': ['blockchain', 'блокчейн', 'crypto', 'крипто', 'web3'],
+        'GameDev': ['gamedev', 'игров', 'game', 'unity', 'unreal'],
+        'Cybersecurity': ['кибербезопас', 'cybersecurity', '信息安全', 'hacking', 'ctf'],
+        'IoT': ['iot', 'интернет вещей', 'embedded', 'arduino', 'raspberry'],
+        'FinTech': ['fintech', 'финтех', 'банков', 'платеж'],
+        'EdTech': ['edtech', 'образование', 'обучен', 'edu']
+    }
+    
+    text = (title + " " + (description or "")).lower()
+    
+    for theme, keywords in themes.items():
+        if any(keyword in text for keyword in keywords):
+            return theme
+    
+    return "IT (общая)"
 
-                if has_keyword and has_location:
-                    orig_title = entry.get('title', 'Без названия')
-                    link = entry.get('link', '#')
-                    published = entry.get('published', 'Дата не указана')
-                    
-                    report += f"🔹 *{orig_title}*\n"
-                    report += f"📅 {published}\n"
-                    report += f"🔗 [Подробнее]({link})\n\n"
-                    events_found += 1
-                    
-                    # Ограничим 10 событиями, чтобы не спамить
-                    if events_found >= 10:
-                        break
-                        
-        except Exception as e:
-            print(f"⚠️ Ошибка при чтении {feed_name}: {e}")
+def main():
+    # Timepad API для IT-событий в Москве
+    url = "https://api.timepad.ru/api/2/events.json"
+    params = {
+        'city_id': 1,  # Москва
+        'category_ids': 21,  # IT категория
+        'limit': 30,
+        'status': 'active'
+    }
+    
+    try:
+        response = requests.get(url, params=params)
+        events = response.json().get('values', [])
         
-        if events_found >= 10:
-            break
-
-    if events_found > 0:
-        report += f"_✅ Найдено событий: {events_found}_"
-        send_to_telegram(report)
-    else:
-        debug_report = "🔍 *Новых анонсов по ключевым словам не найдено.*\n\n"
-        debug_report += "Последние заголовки в лентах:\n\n"
-        debug_report += debug_info
-        debug_report += "\n_Попробуйте расширить список ключевых слов в main.py_"
-        send_to_telegram(debug_report)
+        report = "🗓 *ИТ-мероприятия в Москве*\n"
+        report += f"_{datetime.now().strftime('%d.%m.%Y')}_\n\n"
+        
+        count = 0
+        today = datetime.now()
+        next_week = today + timedelta(days=14)  # Ближайшие 2 недели
+        
+        for event in events:
+            event_date = datetime.strptime(event['start_at'][:10], '%Y-%m-%d')
+            
+            if today <= event_date <= next_week:
+                # Извлекаем данные
+                title = event['name']
+                link = f"https://timepad.ru/event/{event['id']}/"
+                start_date = event_date.strftime('%d.%m.%Y')
+                
+                # Дата окончания (если есть)
+                end_date_str = event.get('end_at', '')
+                if end_date_str:
+                    end_date = datetime.strptime(end_date_str[:10], '%Y-%m-%d')
+                    if end_date != event_date:
+                        date_range = f"{start_date} — {end_date.strftime('%d.%m.%Y')}"
+                    else:
+                        date_range = start_date
+                else:
+                    date_range = start_date
+                
+                # Организатор
+                org = event.get('organization', {}).get('name', 'Не указан')
+                
+                # Описание
+                description = event.get('description', '')
+                
+                # Призовой фонд и тематика
+                prize = extract_prize_from_description(description)
+                theme = extract_theme_from_description(description, title)
+                
+                # Формируем блок события
+                report += f" *{title}*\n"
+                report += f"📅 *Срок проведения:* {date_range}\n"
+                report += f"🏢 *Организатор:* {org}\n"
+                report += f"💰 *Призовой фонд:* {prize}\n"
+                report += f"🎯 *Тематика:* {theme}\n"
+                report += f"🔗 [Регистрация]({link})\n\n"
+                report += "━" * 15 + "\n\n"
+                
+                count += 1
+                
+                if count >= 10:
+                    break
+        
+        if count > 0:
+            report += f"_✅ Найдено событий: {count}_"
+            send_to_telegram(report)
+        else:
+            send_to_telegram("🔍 На ближайшие 2 недели событий не найдено")
+            
+    except Exception as e:
+        send_to_telegram(f"❌ Ошибка при получении данных: {e}")
 
 if __name__ == "__main__":
     main()
