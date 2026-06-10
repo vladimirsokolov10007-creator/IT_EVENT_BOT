@@ -69,7 +69,7 @@ def main():
             print(f"⚠️ Ошибка при чтении {feed_name}: {e}")
 
     if events_found > 0:
-        report += f"_✅ Найдено событий: {eventsFound}_"
+        report += f"_✅ Найдено событий: {events_found}_"
         send_to_telegram(report)
     else:
         # Если ничего не найдено, показываем, что вообще есть в лентах, чтобы понять причину
