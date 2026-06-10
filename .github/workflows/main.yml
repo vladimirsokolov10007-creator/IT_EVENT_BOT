@@ -2,19 +2,18 @@ name: Weekly IT Events Report
 
 on:
   schedule:
-    # Запуск каждый понедельник в 09:00 по UTC (12:00 по Москве)
     - cron: '0 9 * * 1'
-  workflow_dispatch: # Эта строка позволяет запускать скрипт вручную для теста
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5  # Обновили с v4 до v5
       
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v5  # Оставляем v5
       with:
         python-version: '3.11'
         
