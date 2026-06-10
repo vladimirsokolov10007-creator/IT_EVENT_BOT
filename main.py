@@ -6,19 +6,24 @@ from datetime import datetime
 BOT_TOKEN = '8925355466:AAFwGby1v-t-JGbCbUnjbt_2aM9JTsnHU_U' 
 CHAT_ID = '908014386' 
 
-# Проверенные и активные RSS-ленты
+# РОССИЙСКИЕ ИСТОЧНИКИ (Timepad, Habr и др.)
 RSS_FEEDS = [
-    ('Devpost Hackathons', 'https://devpost.com/hackathons.rss'),
+    ('Timepad IT Москва', 'https://timepad.ru/api/2/events/?search[city_id]=1&search[is_free]=false&search[limit]=20&search[order_by]=start_date&search[status]=active&search[tags]=it'),
+    ('Habr Митапы', 'https://habr.com/ru/rss/hub/meetups/'),
     ('Habr Карьера', 'https://habr.com/ru/rss/hub/career/'),
     ('Habr Обучение', 'https://habr.com/ru/rss/hub/education/'),
-    ('Dev.to Hackathons', 'https://dev.to/feed/tag/hackathon')
+    ('VC.ru Мероприятия', 'https://vc.ru/rss'),
 ]
 
-# Ключевые слова (расширенный список, ищем и в заголовке, и в описании)
+# Ключевые слова для российских событий
 KEYWORDS = [
-    'хакатон', 'олимпиада', 'конкурс', 'митап', 'соревнован', 'чемпионат',
-    'hackathon', 'olympiad', 'meetup', 'contest', 'coding', 'квиз'
+    'хакатон', 'олимпиада', 'конкурс', 'митап', 'соревнован', 'чемпионат', 'конференц',
+    'воркшоп', 'мк', 'мастер-класс', 'встреча', 'митап', 'хакатон', 'coding', 'программирован',
+    'hackathon', 'meetup', 'olympiad', 'квиз', 'чемпионат'
 ]
+
+# Ключевые слова для фильтрации по Москве/России
+LOCATION_KEYWORDS = ['москва', 'moscow', 'онлайн', 'online', 'россия', 'russia', 'мск']
 
 def send_to_telegram(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -35,27 +40,30 @@ def send_to_telegram(message):
         print(f"❌ Ошибка отправки в Telegram: {e}")
 
 def main():
-    report = "🗓 *Свежие ИТ-мероприятия*\n"
+    report = "🗓 *ИТ-мероприятия в Москве и онлайн*\n"
     report += f"_{datetime.now().strftime('%d.%m.%Y')}_\n\n"
     
     events_found = 0
-    debug_info = "" # Для отладки, если ничего не найдено
+    debug_info = ""
 
     for feed_name, feed_url in RSS_FEEDS:
         try:
             feed = feedparser.parse(feed_url)
             
-            # Проверяем последние 15 записей из каждой ленты
-            for entry in feed.entries[:15]: 
+            for entry in feed.entries[:20]: 
                 title = entry.get('title', '').lower()
                 summary = entry.get('summary', '').lower()
                 full_text = title + " " + summary
                 
-                # Сохраняем заголовки для отладки (покажем последние 2 из каждой ленты)
-                debug_info += f"  • {entry.get('title', 'Без названия')[:60]}...\n"
+                # Проверяем наличие ключевых слов И локацию (Москва/онлайн/Россия)
+                has_keyword = any(keyword in full_text for keyword in KEYWORDS)
+                has_location = any(loc in full_text for loc in LOCATION_KEYWORDS)
+                
+                # Сохраняем для отладки
+                if len(debug_info.split('\n')) < 10:  # Только первые 10 заголовков
+                    debug_info += f"  • {entry.get('title', 'Без названия')[:60]}...\n"
 
-                # Если найдено хотя бы одно ключевое слово
-                if any(keyword in full_text for keyword in KEYWORDS):
+                if has_keyword and has_location:
                     orig_title = entry.get('title', 'Без названия')
                     link = entry.get('link', '#')
                     published = entry.get('published', 'Дата не указана')
@@ -65,18 +73,24 @@ def main():
                     report += f"🔗 [Подробнее]({link})\n\n"
                     events_found += 1
                     
+                    # Ограничим 10 событиями, чтобы не спамить
+                    if events_found >= 10:
+                        break
+                        
         except Exception as e:
             print(f"⚠️ Ошибка при чтении {feed_name}: {e}")
+        
+        if events_found >= 10:
+            break
 
     if events_found > 0:
         report += f"_✅ Найдено событий: {events_found}_"
         send_to_telegram(report)
     else:
-        # Если ничего не найдено, показываем, что вообще есть в лентах, чтобы понять причину
         debug_report = "🔍 *Новых анонсов по ключевым словам не найдено.*\n\n"
-        debug_report += "Возможно, за последние дни не было публикаций. Вот последние заголовки в лентах, чтобы вы понимали, что бот работает:\n\n"
+        debug_report += "Последние заголовки в лентах:\n\n"
         debug_report += debug_info
-        debug_report += "\n_Попробуйте расширить список ключевых слов в main.py или добавьте новые RSS-источники._"
+        debug_report += "\n_Попробуйте расширить список ключевых слов в main.py_"
         send_to_telegram(debug_report)
 
 if __name__ == "__main__":
