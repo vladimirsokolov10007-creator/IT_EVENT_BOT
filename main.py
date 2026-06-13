@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 
 # --- НАСТРОЙКИ ---
 BOT_TOKEN = '8925355466:AAFwGby1v-t-JGbCbUnjbt_2aM9JTsnHU_U'
-CHAT_ID = '908014386'
+CHAT_ID = '@it_events_list'
 
 # --- ТОЛЬКО СОРЕВНОВАТЕЛЬНЫЕ КЛЮЧЕВЫЕ СЛОВА ---
 # Событие должно содержать хотя бы одно из них
