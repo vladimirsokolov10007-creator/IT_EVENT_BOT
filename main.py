@@ -164,32 +164,27 @@ def main():
                 # Теперь принимаем событие, если есть ключевое слово (локация опциональна)
                 if has_keyword:
                     parsed_date = entry.get('published_parsed') or entry.get('updated_parsed')
-                    
                     if parsed_date:
-                        event_date = datetime(*parsed_date[:6])
-                        # Расширили диапазон до 30 дней
-                        if not (today <= event_date <= next_week):
-                            continue
-                        date_display = event_date.strftime('%d.%m.%Y')
+                        date_display = datetime(*parsed_date[:6]).strftime('%d.%m.%Y')
                     else:
                         date_display = "Дата уточняется"
-                    
+    
                     org = entry.get('author', feed_name)
                     link = entry.get('link', '#')
                     prize = extract_prize(summary)
                     theme = extract_theme(full_text)
-                    
+    
                     safe_title = escape_html(title)
                     safe_org = escape_html(org)
-                    
+    
                     report += f"<b>🔹 {safe_title}</b>\n"
-                    report += f"📅 <b>Дата:</b> {date_display}\n"
-                    report += f"🏢 <b>Организатор:</b> {safe_org}\n"
+                    report += f"📅 <b>Дата публикации:</b> {date_display}\n"
+                    report += f"🏢 <b>Источник:</b> {safe_org}\n"
                     report += f"💰 <b>Призовой фонд:</b> {prize}\n"
                     report += f"🎯 <b>Тематика:</b> {theme}\n"
                     report += f"🔗 <a href='{link}'>Подробнее</a>\n\n"
                     report += "━━━━━━━━━━━━━━━━\n\n"
-                    
+    
                     events_found += 1
                     if events_found >= 10:
                         break
