@@ -8,23 +8,30 @@ from bs4 import BeautifulSoup
 BOT_TOKEN = '8925355466:AAFwGby1v-t-JGbCbUnjbt_2aM9JTsnHU_U'
 CHAT_ID = '-1004445860179'
 
-# --- ТОЛЬКО СОРЕВНОВАТЕЛЬНЫЕ КЛЮЧЕВЫЕ СЛОВА ---
-# Событие должно содержать хотя бы одно из них
-COMPETITION_KEYWORDS = [
+# --- ОСНОВНЫЕ СОРЕВНОВАТЕЛЬНЫЕ КЛЮЧЕВЫЕ СЛОВА ---
+# События ДОЛЖНЫ содержать хотя бы одно из них
+CORE_COMPETITION_KEYWORDS = [
     "хакатон", "hackathon",
     "олимпиада", "olympiad",
     "чемпионат", "championship",
-    "конкурс", "competition",
     "турнир", "tournament",
     "ctf", "capture the flag",
     "gamejam", "game jam",
-    "марафон программирования",
+]
+
+# Всероссийские и известные ИТ конкурсы
+RUSSIAN_COMPETITIONS = [
     "цифровой прорыв",
     "лидеры цифровой трансформации",
     "it-планета",
-    "призовой фонд",
-    "prize fund",
-    "соревновани",   # соревнование, соревнований и т.д.
+    "россия — страна возможностей",
+]
+
+# Признаки возможности регистрации
+REGISTRATION_KEYWORDS = [
+    "регистр", "register", "signup", "sign-up",
+    "участие", "submit", "apply", "заявка", "подать",
+    "участвуй", "join", "зарегистриров", "приём",
 ]
 
 # Слова-исключения: если они есть в заголовке — скипаем
@@ -40,6 +47,7 @@ EXCLUDE_KEYWORDS = [
     "трансляция",
     "как стать",
     "обучение",
+    "семинар", "семёнар",
 ]
 
 # RSS-ленты — только профильные источники
@@ -128,16 +136,43 @@ def extract_date_from_text(text: str):
 
 
 def is_competition(title: str, summary: str) -> bool:
-    """Проверяет, является ли запись соревнованием."""
+    """
+    Проверяет, является ли запись реальным конкурсом/олимпиадой с возможностью регистрации.
+    Требует:
+    1. Наличие основного соревновательного слова (хакатон, олимпиада, чемпионат, турнир и т.д.)
+    2. Признаки регистрации (регистр, участие, заявка и т.д.)
+    3. Отсутствие слов-исключений (вебинар, лекция, курс и т.д.)
+    """
     full = (title + " " + summary).lower()
-
-    # Если есть слово-исключение в заголовке — пропускаем
     title_lower = title.lower()
+    
+    # 1️⃣ ОБЯЗАТЕЛЬНО исключаем события, которые НЕ соревнования
     if any(excl in title_lower for excl in EXCLUDE_KEYWORDS):
         return False
-
-    # Должно быть хотя бы одно соревновательное слово
-    return any(kw in full for kw in COMPETITION_KEYWORDS)
+    
+    # 2️⃣ Проверяем основные соревновательные ключевые слова
+    has_core_keyword = any(kw in full for kw in CORE_COMPETITION_KEYWORDS)
+    
+    # 3️⃣ ИЛИ известные всероссийские конкурсы
+    has_russian_competition = any(kw in full for kw in RUSSIAN_COMPETITIONS)
+    
+    # 4️⃣ Проверяем признаки регистрации
+    has_registration = any(kw in full for kw in REGISTRATION_KEYWORDS)
+    
+    # ИТОГОВАЯ ЛОГИКА:
+    # Если есть основное соревновательное слово + признаки регистрации
+    if has_core_keyword and has_registration:
+        return True
+    
+    # Или известный российский конкурс с регистрацией
+    if has_russian_competition and has_registration:
+        return True
+    
+    # Для очень явных соревнований (хакатон, олимпиада) — даже без явного слова "регистр"
+    if has_core_keyword and ('участи' in full or 'заявк' in full or 'приём' in full):
+        return True
+    
+    return False
 
 
 def parse_rss_feeds():
@@ -223,12 +258,16 @@ def parse_hackathons_rfc():
             if not title or len(title) < 5:
                 continue
 
+            # Проверяем, что это реальный хакатон/конкурс
+            text = card.get_text(separator=' ')
+            if not is_competition(title, text):
+                continue
+
             link_el = card.find('a', href=True)
             link = link_el['href'] if link_el else url
             if link.startswith('/'):
                 link = "https://www.xn--80aa3anexr8c.xn--p1ai" + link
 
-            text = card.get_text(separator=' ')
             prize = extract_prize(text)
             event_date = extract_date_from_text(text)
             date_str = event_date.strftime('%d.%m.%Y') if event_date else "Уточняется"
@@ -268,9 +307,22 @@ def parse_rsv():
             if not title or len(title) < 5:
                 continue
 
-            # Фильтр — только ИТ тематика
-            text_lower = (title + card.get_text()).lower()
-            if not any(kw in text_lower for kw in ['ит', 'it', 'цифров', 'программ', 'разработ', 'техно', 'данн']):
+            text = card.get_text(separator=' ')
+            text_lower = text.lower()
+
+            # 1️⃣ Фильтр — только ИТ тематика
+            if not any(kw in text_lower for kw in [
+                'ит', 'it', 'цифров', 'программ', 'разработ', 'техно', 'данн',
+                'конкурс', 'олимпиад', 'чемпион', 'хакатон'
+            ]):
+                continue
+
+            # 2️⃣ Обязательно — признаки регистрации/участия
+            if not any(kw in text_lower for kw in REGISTRATION_KEYWORDS):
+                continue
+
+            # 3️⃣ Применяем основной фильтр соревнований
+            if not is_competition(title, text):
                 continue
 
             link_el = card.find('a', href=True)
@@ -278,7 +330,6 @@ def parse_rsv():
             if link.startswith('/'):
                 link = "https://rsv.ru" + link
 
-            text = card.get_text(separator=' ')
             event_date = extract_date_from_text(text)
             date_str = event_date.strftime('%d.%m.%Y') if event_date else "Уточняется"
 
@@ -299,11 +350,12 @@ def parse_rsv():
 
 def build_report(events: list) -> str:
     today_str = datetime.now().strftime('%d.%m.%Y')
-    report = f"<b>🏆 ИТ-соревнования и хакатоны</b>\n"
-    report += f"<i>Подборка на {today_str}</i>\n\n"
+    report = f"<b>🏆 ИТ-соревнования, олимпиады и конкурсы</b>\n"
+    report += f"<i>Подборка на {today_str}</i>\n"
+    report += f"<i>Только события с возможностью регистрации</i>\n\n"
 
     if not events:
-        report += "😔 Активных соревнований не найдено.\n"
+        report += "😔 Активных конкурсов/олимпиад не найдено.\n"
         report += "Попробуйте запустить позже или проверьте источники."
         return report
 
@@ -317,13 +369,13 @@ def build_report(events: list) -> str:
         report += f"<b>{i}. {title}</b>\n"
         report += f"📅 {date}\n"
         if prize:
-            report += f"💰 Призовой фонд: {escape_html(prize)}\n"
+            report += f"💰 {escape_html(prize)}\n"
         report += f"📌 Источник: {source}\n"
         if link:
             report += f"🔗 <a href='{link}'>Подробнее</a>\n"
         report += "\n"
 
-    report += f"<i>Всего найдено: {len(events)}</i>"
+    report += f"<i>Всего найдено: {len(events)} соревнований</i>"
     return report
 
 
@@ -333,12 +385,15 @@ def main():
     all_events = []
 
     # 1. RSS-ленты (Habr хакатоны + it-events)
+    print("\n1️⃣ Парсим RSS-ленты...")
     all_events += parse_rss_feeds()
 
     # 2. Хакатоны.рф
+    print("\n2️⃣ Парсим Хакатоны.рф...")
     all_events += parse_hackathons_rfc()
 
-    # 3. Россия — страна возможностей
+    # 3. Россия — страна возможностей (конкурсы)
+    print("\n3️⃣ Парсим RSV.ru...")
     all_events += parse_rsv()
 
     # Дедупликация по заголовку
@@ -350,7 +405,7 @@ def main():
             seen.add(key)
             unique_events.append(ev)
 
-    print(f"✅ Найдено уникальных мероприятий: {len(unique_events)}")
+    print(f"\n✅ Найдено уникальных мероприятий: {len(unique_events)}")
 
     report = build_report(unique_events)
     send_to_telegram(report)
