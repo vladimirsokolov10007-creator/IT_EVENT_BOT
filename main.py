@@ -50,6 +50,20 @@ EXCLUDE_KEYWORDS = [
     "семинар", "семёнар",
 ]
 
+# Ключевые слова для определения тематики
+THEME_KEYWORDS = {
+    "Web": ["web", "вебсайт", "фронтенд", "backend", "fullstack"],
+    "AI/ML": ["ai", "ml", "нейросеть", "искусственный интеллект", "machine learning", "deep learning"],
+    "Блокчейн": ["блокчейн", "blockchain", "crypto", "крипто", "web3"],
+    "Мобильное приложение": ["android", "ios", "мобильное приложение", "мобильн"],
+    "Киберспорт": ["киберспорт", "esports", "gaming"],
+    "IoT": ["iot", "интернет вещей", "embedded"],
+    "DevOps": ["devops", "cloud", "облачн", "kubernetes", "docker"],
+    "Кибербезопасность": ["кибербезопасность", "security", "безопасность", "ctf"],
+    "Data Science": ["data science", "big data", "данные", "анализ данных"],
+    "Разработка ПО": ["разработка", "программирование", "разработка ПО"],
+}
+
 # RSS-ленты — только профильные источники
 RSS_FEEDS = [
     ('Habr Хакатоны', 'https://habr.com/ru/rss/hub/hackathons/'),
@@ -101,6 +115,7 @@ def extract_prize(text: str) -> str:
         return None
     patterns = [
         r'призовой\s+фонд[:\s]*([\d\s]+(?:тыс|млн|k|m)?)\s*(?:руб|₽|rur)?',
+        r'фонд[:\s]*([\d\s]+(?:тыс|млн)?)\s*(?:руб|₽)',
         r'([\d\s]{3,}(?:тыс|млн)?)\s*(?:руб|₽)',
         r'prize[:\s]*([\d\s]+(?:k|m)?)\s*(?:rub|₽|rur)?',
     ]
@@ -139,15 +154,16 @@ def extract_organizer(text: str) -> str:
     """Пробует извлечь организатора из текста."""
     patterns = [
         r'организатор[:\s]*([^,\n]+)',
+        r'организ[\.а-яё]*[:\s]*([^,\n]+)',
         r'от[:\s]*([^,\n]+?)(?:\n|,|$)',
     ]
     for p in patterns:
         m = re.search(p, text, re.IGNORECASE)
         if m:
             org = m.group(1).strip()
-            if len(org) < 100:
+            if len(org) < 100 and org.strip():
                 return org
-    return None
+    return "Не указан"
 
 
 def extract_location(text: str) -> str:
@@ -158,6 +174,7 @@ def extract_location(text: str) -> str:
         r'город[:\s]*([^,\n]+)',
         r'формат[:\s]*([^,\n]+)',
         r'отель[:\s]*([^,\n]+)',
+        r'(онлайн|очно|гибридно|дистанционно)',
     ]
     for p in patterns:
         m = re.search(p, text, re.IGNORECASE)
@@ -171,25 +188,35 @@ def extract_location(text: str) -> str:
 def extract_registration_deadline(text: str) -> str:
     """Пробует найти deadline регистрации в тексте."""
     patterns = [
-        r'регистрац[^:]*[:\s]*до\s+(\d{1,2}[а-яё]*\s+\d{4})',
-        r'до\s+(\d{1,2}[а-яё\s]*\d{4})\s*(?:года|г\.)',
-        r'регистрация[^:]*до\s+(\d{1,2})',
+        r'регистрац[^:]*[:\s]*до\s+(\d{1,2}\s+[а-яё]+\s+\d{4})',
+        r'регистрация[:\s]*до\s+(\d{1,2}\s+[а-яё]+)',
+        r'срок\s+регистр[^:]*[:\s]*(\d{1,2}\s+[а-яё]+)',
+        r'до\s+(\d{1,2}\s+[а-яё]+\s*\d{4}?)',
     ]
     for p in patterns:
         m = re.search(p, text, re.IGNORECASE)
         if m:
             deadline = m.group(1).strip()
-            return deadline
-    return None
+            if deadline:
+                return deadline
+    return "Уточняется"
+
+
+def extract_theme(title: str, text: str) -> str:
+    """Определяет тематику конкурса на основе ключевых слов."""
+    full = (title + " " + text).lower()
+    
+    for theme, keywords in THEME_KEYWORDS.items():
+        for kw in keywords:
+            if kw.lower() in full:
+                return theme
+    
+    return "Общая тематика"
 
 
 def is_competition(title: str, summary: str) -> bool:
     """
     Проверяет, является ли запись реальным конкурсом/олимпиадой с возможностью регистрации.
-    Требует:
-    1. Наличие основного соревновательного слова (хакатон, олимпиада, чемпионат, турнир и т.д.)
-    2. Признаки регистрации (регистр, участие, заявка и т.д.)
-    3. Отсутствие слов-исключений (вебинар, лекция, курс и т.д.)
     """
     full = (title + " " + summary).lower()
     title_lower = title.lower()
@@ -208,15 +235,12 @@ def is_competition(title: str, summary: str) -> bool:
     has_registration = any(kw in full for kw in REGISTRATION_KEYWORDS)
     
     # ИТОГОВАЯ ЛОГИКА:
-    # Если есть основное соревновательное слово + признаки регистрации
     if has_core_keyword and has_registration:
         return True
     
-    # Или известный российский конкурс с регистрацией
     if has_russian_competition and has_registration:
         return True
     
-    # Для очень явных соревнований (хакатон, олимпиада) — даже без явного слова "регистр"
     if has_core_keyword and ('участи' in full or 'заявк' in full or 'приём' in full):
         return True
     
@@ -252,37 +276,24 @@ def parse_rss_feeds():
 
                 seen_titles.add(title)
 
-                # Дата публикации
-                parsed_date = entry.get('published_parsed') or entry.get('updated_parsed')
-                if parsed_date:
-                    pub_date = datetime(*parsed_date[:6])
-                    pub_date_str = pub_date.strftime('%d.%m.%Y')
-                else:
-                    pub_date_str = "Дата уточняется"
+                full_text = title + " " + summary
 
-                # Попытка найти дату мероприятия в тексте
-                event_date = extract_date_from_text(summary) or extract_date_from_text(title)
-                if event_date:
-                    event_date_str = event_date.strftime('%d.%m.%Y')
-                else:
-                    event_date_str = pub_date_str
-
-                prize = extract_prize((title + " " + summary).lower())
+                # Базовая информация
                 link = entry.get('link', '')
-                organizer = extract_organizer(summary)
-                location = extract_location(summary)
-                registration_deadline = extract_registration_deadline(summary)
+                organizer = extract_organizer(full_text)
+                prize = extract_prize(full_text)
+                if not prize:
+                    prize = "Без призового фонда"
+                registration_deadline = extract_registration_deadline(full_text)
+                theme = extract_theme(title, full_text)
 
                 events.append({
                     'title': title,
-                    'date': event_date_str,
-                    'prize': prize,
-                    'link': link,
-                    'source': feed_name,
-                    'summary': summary[:300],
                     'organizer': organizer,
-                    'location': location,
+                    'prize': prize,
                     'registration_deadline': registration_deadline,
+                    'theme': theme,
+                    'link': link,
                 })
 
         except Exception as e:
@@ -312,7 +323,6 @@ def parse_hackathons_rfc():
             if not title or len(title) < 5:
                 continue
 
-            # Проверяем, что это реальный хакатон/конкурс
             text = card.get_text(separator=' ')
             if not is_competition(title, text):
                 continue
@@ -322,23 +332,21 @@ def parse_hackathons_rfc():
             if link.startswith('/'):
                 link = "https://www.xn--80aa3anexr8c.xn--p1ai" + link
 
-            prize = extract_prize(text)
-            event_date = extract_date_from_text(text)
-            date_str = event_date.strftime('%d.%m.%Y') if event_date else "Уточняется"
-            organizer = extract_organizer(text)
-            location = extract_location(text)
-            registration_deadline = extract_registration_deadline(text)
+            full_text = title + " " + text
+            organizer = extract_organizer(full_text)
+            prize = extract_prize(full_text)
+            if not prize:
+                prize = "Без призового фонда"
+            registration_deadline = extract_registration_deadline(full_text)
+            theme = extract_theme(title, full_text)
 
             events.append({
                 'title': title,
-                'date': date_str,
-                'prize': prize,
-                'link': link,
-                'source': 'Хакатоны.рф',
-                'summary': text[:200],
                 'organizer': organizer,
-                'location': location,
+                'prize': prize,
                 'registration_deadline': registration_deadline,
+                'theme': theme,
+                'link': link,
             })
 
     except Exception as e:
@@ -390,23 +398,21 @@ def parse_rsv():
             if link.startswith('/'):
                 link = "https://rsv.ru" + link
 
-            event_date = extract_date_from_text(text)
-            date_str = event_date.strftime('%d.%m.%Y') if event_date else "Уточняется"
-            prize = extract_prize(text)
-            organizer = extract_organizer(text)
-            location = extract_location(text)
-            registration_deadline = extract_registration_deadline(text)
+            full_text = title + " " + text
+            organizer = extract_organizer(full_text)
+            prize = extract_prize(full_text)
+            if not prize:
+                prize = "Без призового фонда"
+            registration_deadline = extract_registration_deadline(full_text)
+            theme = extract_theme(title, full_text)
 
             events.append({
                 'title': title,
-                'date': date_str,
-                'prize': prize,
-                'link': link,
-                'source': 'Россия — страна возможностей',
-                'summary': text[:200],
                 'organizer': organizer,
-                'location': location,
+                'prize': prize,
                 'registration_deadline': registration_deadline,
+                'theme': theme,
+                'link': link,
             })
 
     except Exception as e:
@@ -416,12 +422,11 @@ def parse_rsv():
 
 
 def build_report(events: list) -> str:
-    """Строит красивый отчет с событиями в формате карточек."""
+    """Строит отчет в едином формате для всех событий."""
     today_str = datetime.now().strftime('%d.%m.%Y')
     report = f"<b>🏆 ИТ-соревнования, олимпиады и конкурсы</b>\n"
     report += f"<i>Подборка на {today_str}</i>\n"
-    report += f"<i>Только события с возможностью регистрации</i>\n"
-    report += "\n"
+    report += f"<i>Только события с возможностью регистрации</i>\n\n"
 
     if not events:
         report += "😔 <b>Активных конкурсов/олимпиад не найдено</b>\n\n"
@@ -430,42 +435,21 @@ def build_report(events: list) -> str:
 
     for i, ev in enumerate(events[:15], 1):
         title = escape_html(ev['title'])
-        date = ev['date']
-        link = ev['link']
-        source = escape_html(ev['source'])
-        prize = ev.get('prize')
-        organizer = ev.get('organizer')
-        location = ev.get('location')
-        registration_deadline = ev.get('registration_deadline')
+        organizer = escape_html(ev.get('organizer', 'Не указан'))
+        prize = escape_html(ev.get('prize', 'Без призового фонда'))
+        registration_deadline = escape_html(ev.get('registration_deadline', 'Уточняется'))
+        theme = escape_html(ev.get('theme', 'Общая тематика'))
+        link = ev.get('link', '')
 
-        # Строим карточку события
+        # Единая структура для всех событий
         report += f"<b>{i}. {title}</b>\n"
+        report += f"👤 Организатор: {organizer}\n"
+        report += f"💰 Призовой фонд: {prize}\n"
+        report += f"📌 Срок регистрации: {registration_deadline}\n"
+        report += f"🎯 Тематика: {theme}\n"
         
-        # Дата проведения
-        report += f"📅 {date}\n"
-        
-        # Deadline регистрации
-        if registration_deadline:
-            report += f"🔔 Регистрация: до {escape_html(registration_deadline)}\n"
-        
-        # Организатор
-        if organizer:
-            report += f"📌 Организатор: {escape_html(organizer)}\n"
-        
-        # Место проведения
-        if location:
-            report += f"📍 {escape_html(location)}\n"
-        
-        # Призовой фонд
-        if prize:
-            report += f"💰 Призовой фонд: {escape_html(prize)}\n"
-        
-        # Источник
-        report += f"🔗 Источник: <b>{source}</b>\n"
-        
-        # Ссылка на регистрацию
         if link:
-            report += f"<a href='{link}'>→ Подробнее и регистрация</a>\n"
+            report += f"<a href='{link}'>→ Ссылка на регистрацию</a>\n"
         
         report += "\n"
 
