@@ -162,9 +162,9 @@ def extract_organizer(text: str) -> str:
         m = re.search(p, text, re.IGNORECASE)
         if m:
             org = m.group(1).strip()
-            if len(org) < 100 and org.strip():
+            if len(org) < 100 and org.strip() and org.lower() not in ['организатор']:
                 return org
-    return "Не указан"
+    return "—"
 
 
 def extract_location(text: str) -> str:
@@ -181,9 +181,9 @@ def extract_location(text: str) -> str:
         m = re.search(p, text, re.IGNORECASE)
         if m:
             loc = m.group(1).strip()
-            if len(loc) < 100:
+            if len(loc) < 100 and loc.strip():
                 return loc
-    return None
+    return "—"
 
 
 def extract_registration_deadline(text: str) -> str:
@@ -200,7 +200,7 @@ def extract_registration_deadline(text: str) -> str:
             deadline = m.group(1).strip()
             if deadline:
                 return deadline
-    return "Уточняется"
+    return "—"
 
 
 def extract_theme(title: str, text: str) -> str:
@@ -212,7 +212,7 @@ def extract_theme(title: str, text: str) -> str:
             if kw.lower() in full:
                 return theme
     
-    return "Общая тематика"
+    return "—"
 
 
 def is_competition(title: str, summary: str) -> bool:
@@ -284,7 +284,7 @@ def parse_rss_feeds():
                 organizer = extract_organizer(full_text)
                 prize = extract_prize(full_text)
                 if not prize:
-                    prize = "Без призового фонда"
+                    prize = "—"
                 registration_deadline = extract_registration_deadline(full_text)
                 theme = extract_theme(title, full_text)
 
@@ -337,7 +337,7 @@ def parse_hackathons_rfc():
             organizer = extract_organizer(full_text)
             prize = extract_prize(full_text)
             if not prize:
-                prize = "Без призового фонда"
+                prize = "—"
             registration_deadline = extract_registration_deadline(full_text)
             theme = extract_theme(title, full_text)
 
@@ -403,7 +403,7 @@ def parse_rsv():
             organizer = extract_organizer(full_text)
             prize = extract_prize(full_text)
             if not prize:
-                prize = "Без призового фонда"
+                prize = "—"
             registration_deadline = extract_registration_deadline(full_text)
             theme = extract_theme(title, full_text)
 
@@ -436,10 +436,10 @@ def build_report(events: list) -> str:
 
     for i, ev in enumerate(events[:15], 1):
         title = escape_html(ev['title'])
-        organizer = escape_html(ev.get('organizer', 'Не указан'))
-        prize = escape_html(ev.get('prize', 'Без призового фонда'))
-        registration_deadline = escape_html(ev.get('registration_deadline', 'Уточняется'))
-        theme = escape_html(ev.get('theme', 'Общая тематика'))
+        organizer = escape_html(ev.get('organizer', '—'))
+        prize = escape_html(ev.get('prize', '—'))
+        registration_deadline = escape_html(ev.get('registration_deadline', '—'))
+        theme = escape_html(ev.get('theme', '—'))
         link = ev.get('link', '')
 
         # Единая структура для всех событий
