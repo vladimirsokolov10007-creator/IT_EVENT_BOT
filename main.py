@@ -34,7 +34,7 @@ REGISTRATION_KEYWORDS = [
     "участвуй", "join", "зарегистриров", "приём",
 ]
 
-# Слова-исключения: если они есть в заголовке — скипаем
+# Слова-исключения: если они есть в заголовке — пропускаем
 EXCLUDE_KEYWORDS = [
     "вебинар", "webinar",
     "лекция", "lecture",
@@ -61,7 +61,7 @@ THEME_KEYWORDS = {
     "DevOps": ["devops", "cloud", "облачн", "kubernetes", "docker"],
     "Кибербезопасность": ["кибербезопасность", "security", "безопасность", "ctf"],
     "Data Science": ["data science", "big data", "данные", "анализ данных"],
-    "Разработка ПО": ["разработка", "программирование", "разработка ПО"],
+    "Разработка ПО": ["разработка", "программирование", "разработка по"],
 }
 
 # RSS-ленты — только профильные источники
@@ -101,6 +101,7 @@ def send_to_telegram(message: str):
 
 
 def escape_html(text: str) -> str:
+    """Экранирует HTML-символы в тексте."""
     if not text:
         return ""
     return (text
@@ -303,7 +304,7 @@ def parse_rss_feeds():
 
 
 def parse_hackathons_rfc():
-    """Парсит сайт хакрус (хакатоны.рф) через HTTP."""
+    """Парсит сайт Хакатоны.рф через HTTP."""
     events = []
     try:
         url = "https://www.xn--80aa3anexr8c.xn--p1ai/"
@@ -356,7 +357,7 @@ def parse_hackathons_rfc():
 
 
 def parse_rsv():
-    """Парсит раздел конкурсов с rsv.ru (Россия — страна возможностей)."""
+    """Парсит раздел конкурсов на RSV.ru (Россия — страна возможностей)."""
     events = []
     try:
         url = "https://rsv.ru/competitions/"
@@ -416,7 +417,7 @@ def parse_rsv():
             })
 
     except Exception as e:
-        print(f"⚠️ Ошибка при парсинге RSV: {e}")
+        print(f"⚠️ Ошибка при парсинге RSV.ru: {e}")
 
     return events
 
@@ -429,7 +430,7 @@ def build_report(events: list) -> str:
     report += f"<i>Только события с возможностью регистрации</i>\n\n"
 
     if not events:
-        report += "😔 <b>Активных конкурсов/олимпиад не найдено</b>\n\n"
+        report += "😔 <b>Активных конкурсов и олимпиад не найдено.</b>\n\n"
         report += "Попробуйте запустить позже или проверьте источники."
         return report
 
@@ -453,7 +454,7 @@ def build_report(events: list) -> str:
         
         report += "\n"
 
-    report += f"<i>Всего найдено: {len(events)} соревнований</i>"
+    report += f"<i>Всего найдено: {len(events)} соревнований.</i>"
     return report
 
 
@@ -462,7 +463,7 @@ def main():
 
     all_events = []
 
-    # 1. RSS-ленты (Habr хакатоны + it-events)
+    # 1. RSS-ленты (Habr Хакатоны + IT-events.com)
     print("\n1️⃣ Парсим RSS-ленты...")
     all_events += parse_rss_feeds()
 
