@@ -110,13 +110,27 @@ def escape_html(text: str) -> str:
             .replace(">", "&gt;"))
 
 
+def clean_text(text: str, max_length: int = 80) -> str:
+    """Очищает текст от лишних символов и обрезает до нужной длины."""
+    if not text:
+        return "—"
+    # Удаляем множественные пробелы
+    text = re.sub(r'\s+', ' ', text.strip())
+    # Удаляем специальные символы в начале и конце
+    text = re.sub(r'^[\s\.,;:\-–—]+|[\s\.,;:\-–—]+$', '', text)
+    # Обрезаем по длине и добавляем многоточие если нужно
+    if len(text) > max_length:
+        text = text[:max_length].rsplit(' ', 1)[0] + '...'
+    return text.strip() if text.strip() else "—"
+
+
 def extract_prize(text: str) -> str:
     """Ищет упоминание призового фонда в тексте."""
     if not text:
-        return None
+        return "—"
     patterns = [
         r'призовой\s+фонд[:\s]*([\d\s]+(?:тыс|млн|k|m)?)\s*(?:руб|₽|rur)?',
-        r'фонд[:\s]*([\d\s]+(?:тыс|млн)?)\s*(?:руб|₽)',
+        r'(?:фонд|награда)[:\s]*([\d\s]+(?:тыс|млн)?)\s*(?:руб|₽)',
         r'([\d\s]{3,}(?:тыс|млн)?)\s*(?:руб|₽)',
         r'prize[:\s]*([\d\s]+(?:k|m)?)\s*(?:rub|₽|rur)?',
     ]
@@ -124,87 +138,84 @@ def extract_prize(text: str) -> str:
         m = re.search(p, text, re.IGNORECASE)
         if m:
             amount = m.group(1).strip()
-            return f"{amount} руб."
-    return None
-
-
-def extract_date_from_text(text: str):
-    """Пробует найти дату мероприятия прямо в тексте."""
-    months = {
-        'январ': 1, 'феврал': 2, 'март': 3, 'апрел': 4,
-        'май': 5, 'ма': 5, 'июн': 6, 'июл': 7, 'август': 8,
-        'сентябр': 9, 'октябр': 10, 'ноябр': 11, 'декабр': 12
-    }
-    # Пример: "15 июня 2025" или "15-17 июня"
-    pattern = r'(\d{1,2})(?:\s*[-–]\s*\d{1,2})?\s+([а-яё]+)\s*(\d{4})?'
-    m = re.search(pattern, text, re.IGNORECASE)
-    if m:
-        day = int(m.group(1))
-        month_str = m.group(2).lower()[:5]
-        year = int(m.group(3)) if m.group(3) else datetime.now().year
-        for key, num in months.items():
-            if month_str.startswith(key[:3]):
-                try:
-                    return datetime(year, num, day)
-                except ValueError:
-                    pass
-    return None
+            if amount:
+                return clean_text(f"{amount} руб.", max_length=50)
+    return "—"
 
 
 def extract_organizer(text: str) -> str:
     """Пробует извлечь организатора из текста."""
+    if not text:
+        return "—"
+    
+    # Очищаем текст от лишнего
+    text = re.sub(r'\s+', ' ', text.strip())
+    
     patterns = [
-        r'организатор[:\s]*([^,\n]+)',
-        r'организ[\.а-яё]*[:\s]*([^,\n]+)',
-        r'от[:\s]*([^,\n]+?)(?:\n|,|$)',
+        r'организатор[:\s]+([а-яа-яё\w\s\-\.]+?)(?:\n|$)',
+        r'от[:\s]+([а-яё\w\s\-\.]{5,50})(?:\n|,|;|$)',
     ]
+    
     for p in patterns:
         m = re.search(p, text, re.IGNORECASE)
         if m:
             org = m.group(1).strip()
-            if len(org) < 100 and org.strip() and org.lower() not in ['организатор']:
-                return org
+            # Проверяем, что текст разумной длины и не содержит числовых цепочек
+            if 3 < len(org) < 100 and not re.search(r'\d{3,}', org):
+                return clean_text(org, max_length=60)
+    
     return "—"
 
 
 def extract_location(text: str) -> str:
     """Пробует извлечь место проведения из текста."""
+    if not text:
+        return "—"
+    
     patterns = [
-        r'место[:\s]*([^,\n]+)',
-        r'адрес[:\s]*([^,\n]+)',
-        r'город[:\s]*([^,\n]+)',
-        r'формат[:\s]*([^,\n]+)',
-        r'отель[:\s]*([^,\n]+)',
+        r'место[:\s]+([а-яё\w\s\-\.]+?)(?:\n|,|;|$)',
+        r'адрес[:\s]+([а-яё\w\s\-\.]+?)(?:\n|,|;|$)',
+        r'город[:\s]+([а-яё\w\s\-\.]+?)(?:\n|,|;|$)',
         r'(онлайн|очно|гибридно|дистанционно)',
     ]
+    
     for p in patterns:
         m = re.search(p, text, re.IGNORECASE)
         if m:
             loc = m.group(1).strip()
-            if len(loc) < 100 and loc.strip():
-                return loc
+            if loc and len(loc) < 100:
+                return clean_text(loc, max_length=60)
+    
     return "—"
 
 
 def extract_registration_deadline(text: str) -> str:
     """Пробует найти deadline регистрации в тексте."""
+    if not text:
+        return "—"
+    
     patterns = [
         r'регистрац[^:]*[:\s]*до\s+(\d{1,2}\s+[а-яё]+\s+\d{4})',
+        r'до\s+(\d{1,2}\s+[а-яё]+\s+\d{4})',
         r'регистрация[:\s]*до\s+(\d{1,2}\s+[а-яё]+)',
         r'срок\s+регистр[^:]*[:\s]*(\d{1,2}\s+[а-яё]+)',
-        r'до\s+(\d{1,2}\s+[а-яё]+\s*\d{4}?)',
     ]
+    
     for p in patterns:
         m = re.search(p, text, re.IGNORECASE)
         if m:
             deadline = m.group(1).strip()
-            if deadline:
-                return deadline
+            if deadline and len(deadline) < 50:
+                return clean_text(deadline, max_length=50)
+    
     return "—"
 
 
 def extract_theme(title: str, text: str) -> str:
     """Определяет тематику конкурса на основе ключевых слов."""
+    if not title and not text:
+        return "—"
+    
     full = (title + " " + text).lower()
     
     for theme, keywords in THEME_KEYWORDS.items():
@@ -283,8 +294,6 @@ def parse_rss_feeds():
                 link = entry.get('link', '')
                 organizer = extract_organizer(full_text)
                 prize = extract_prize(full_text)
-                if not prize:
-                    prize = "—"
                 registration_deadline = extract_registration_deadline(full_text)
                 theme = extract_theme(title, full_text)
 
@@ -336,8 +345,6 @@ def parse_hackathons_rfc():
             full_text = title + " " + text
             organizer = extract_organizer(full_text)
             prize = extract_prize(full_text)
-            if not prize:
-                prize = "—"
             registration_deadline = extract_registration_deadline(full_text)
             theme = extract_theme(title, full_text)
 
@@ -402,8 +409,6 @@ def parse_rsv():
             full_text = title + " " + text
             organizer = extract_organizer(full_text)
             prize = extract_prize(full_text)
-            if not prize:
-                prize = "—"
             registration_deadline = extract_registration_deadline(full_text)
             theme = extract_theme(title, full_text)
 
@@ -444,10 +449,10 @@ def build_report(events: list) -> str:
 
         # Единая структура для всех событий
         report += f"<b>{i}. {title}</b>\n"
-        report += f"👤 Организатор: {organizer}\n"
-        report += f"💰 Призовой фонд: {prize}\n"
-        report += f"📌 Срок регистрации: {registration_deadline}\n"
-        report += f"🎯 Тематика: {theme}\n"
+        report += f"👤 {organizer}\n"
+        report += f"💰 {prize}\n"
+        report += f"📌 {registration_deadline}\n"
+        report += f"🎯 {theme}\n"
         
         if link:
             report += f"<a href='{link}'>→ Ссылка на регистрацию</a>\n"
