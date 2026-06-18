@@ -53,7 +53,7 @@ EXCLUDE_KEYWORDS = [
 # Ключевые слова для определения тематики
 THEME_KEYWORDS = {
     "Web": ["web", "вебсайт", "фронтенд", "backend", "fullstack"],
-    "AI/ML": ["ai", "ml", "нейросеть", "искусственный ин��еллект", "machine learning", "deep learning"],
+    "AI/ML": ["ai", "ml", "нейросеть", "искусственный интеллект", "machine learning", "deep learning"],
     "Блокчейн": ["блокчейн", "blockchain", "crypto", "крипто", "web3"],
     "Мобильное приложение": ["android", "ios", "мобильное приложение", "мобильн"],
     "Киберспорт": ["киберспорт", "esports", "gaming"],
@@ -91,7 +91,7 @@ def send_to_telegram(message: str):
             "text": part,
             "parse_mode": "HTML",
             "disable_web_page_preview": True
-n        }
+        }
         try:
             response = requests.post(url, json=payload, timeout=10)
             response.raise_for_status()
