@@ -444,7 +444,7 @@ def parse_rsv():
 
 
 def build_report(events: list) -> str:
-    """Строит отчет в едином формате для всех событий."""
+    """Строит отчет в едином формате для всех событий с укороченными заголовками."""
     today_str = datetime.now().strftime('%d.%m.%Y')
     report = f"<b>🏆 ИТ-соревнования, олимпиады и конкурсы</b>\n"
     report += f"<i>Подборка на {today_str}</i>\n"
@@ -452,19 +452,20 @@ def build_report(events: list) -> str:
 
     if not events:
         report += "😔 <b>Активных конкурсов и олимпиад не найдено.</b>\n\n"
-
         report += "Попробуйте запустить позже или проверьте источники."
         return report
 
     for i, ev in enumerate(events[:15], 1):
-        title = escape_html(ev['title'])
+        # Ограничиваем длину заголовка до 85 символов, чтобы не перегружать интерфейс
+        title = escape_html(clean_text(ev['title'], max_length=85))
+        
         organizer = escape_html(ev.get('organizer', '—'))
         prize = escape_html(ev.get('prize', '—'))
         registration_deadline = escape_html(ev.get('registration_deadline', '—'))
         theme = escape_html(ev.get('theme', '—'))
         link = ev.get('link', '')
 
-        # Единая структура для всех событий
+        # Выводим красивый укороченный заголовок
         report += f"<b>{i}. {title}</b>\n"
         report += f"👤 {organizer}\n"
         report += f"💰 {prize}\n"
