@@ -53,7 +53,7 @@ EXCLUDE_KEYWORDS = [
 # Ключевые слова для определения тематики
 THEME_KEYWORDS = {
     "Web": ["web", "вебсайт", "фронтенд", "backend", "fullstack"],
-    "AI/ML": ["ai", "ml", "нейросеть", "искусственный интеллект", "machine learning", "deep learning"],
+    "AI/ML": ["ai", "ml", "нейросеть", "искусственный ин��еллект", "machine learning", "deep learning"],
     "Блокчейн": ["блокчейн", "blockchain", "crypto", "крипто", "web3"],
     "Мобильное приложение": ["android", "ios", "мобильное приложение", "мобильн"],
     "Киберспорт": ["киберспорт", "esports", "gaming"],
@@ -91,7 +91,7 @@ def send_to_telegram(message: str):
             "text": part,
             "parse_mode": "HTML",
             "disable_web_page_preview": True
-        }
+n        }
         try:
             response = requests.post(url, json=payload, timeout=10)
             response.raise_for_status()
@@ -125,9 +125,10 @@ def clean_text(text: str, max_length: int = 80) -> str:
 
 
 def extract_prize(text: str) -> str:
-    """Ищет упоминание призового фонда в тексте."""
+    """Ищет упоминание призового фонда в тексте. Возвращает строку с суммой/упоминанием или '—'."""
     if not text:
         return "—"
+    # Шаблоны, ищущие числа и валюту
     patterns = [
         r'призовой\s+фонд[:\s]*([\d\s]+(?:тыс|млн|k|m)?)\s*(?:руб|₽|rur)?',
         r'(?:фонд|награда)[:\s]*([\d\s]+(?:тыс|млн)?)\s*(?:руб|₽)',
@@ -140,6 +141,21 @@ def extract_prize(text: str) -> str:
             amount = m.group(1).strip()
             if amount:
                 return clean_text(f"{amount} руб.", max_length=50)
+
+    # Ищем сочетания числа + символа валюты ($, €, ₽ и т.п.)
+    m = re.search(r'(\d[\d\s,\.]*\d)\s*(?:₽|руб|rur|rub|\$|usd|€|eur|£)', text)
+    if m:
+        return clean_text(f"{m.group(1)}", max_length=50)
+
+    # Ищем символ валюты перед числом: $1000, € 2 000
+    m = re.search(r'(?:₽|руб|rur|rub|\$|usd|€|eur|£)\s*(\d[\d\s,\.]*)', text)
+    if m:
+        return clean_text(f"{m.group(1)}", max_length=50)
+
+    # Если явно написано "денежный приз" или "cash prize" — считаем наличием денежного приза
+    if re.search(r'денежн.*приз|cash\s+prize|cash-prize', text, re.IGNORECASE):
+        return clean_text("денежный приз", max_length=50)
+
     return "—"
 
 
@@ -432,10 +448,11 @@ def build_report(events: list) -> str:
     today_str = datetime.now().strftime('%d.%m.%Y')
     report = f"<b>🏆 ИТ-соревнования, олимпиады и конкурсы</b>\n"
     report += f"<i>Подборка на {today_str}</i>\n"
-    report += f"<i>Только события с возможностью регистрации</i>\n\n"
+    report += f"<i>Только конкурсы с денежными призами</i>\n\n"
 
     if not events:
         report += "😔 <b>Активных конкурсов и олимпиад не найдено.</b>\n\n"
+
         report += "Попробуйте запустить позже или проверьте источники."
         return report
 
@@ -491,7 +508,11 @@ def main():
 
     print(f"\n✅ Найдено уникальных мероприятий: {len(unique_events)}")
 
-    report = build_report(unique_events)
+    # Фильтруем — оставляем только конкурсы с денежными призами
+    filtered_events = [ev for ev in unique_events if ev.get('prize') and ev.get('prize') != '—']
+    print(f"✅ После фильтрации по наличию денежного приза: {len(filtered_events)}")
+
+    report = build_report(filtered_events)
     send_to_telegram(report)
 
 
