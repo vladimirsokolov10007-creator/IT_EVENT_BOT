@@ -205,27 +205,7 @@ def extract_location(text: str) -> str:
     return "—"
 
 
-def extract_registration_deadline(text: str) -> str:
-    """Пробует найти deadline регистрации в тексте."""
-    if not text:
-        return "—"
-    
-    patterns = [
-        r'регистрац[^:]*[:\s]*до\s+(\d{1,2}\s+[а-яё]+\s+\d{4})',
-        r'до\s+(\d{1,2}\s+[а-яё]+\s+\d{4})',
-        r'регистрация[:\s]*до\s+(\d{1,2}\s+[а-яё]+)',
-        r'срок\s+регистр[^:]*[:\s]*(\d{1,2}\s+[а-яё]+)',
-    ]
-    
-    for p in patterns:
-        m = re.search(p, text, re.IGNORECASE)
-        if m:
-            deadline = m.group(1).strip()
-            if deadline and len(deadline) < 50:
-                return clean_text(deadline, max_length=50)
-    
-    return "—"
-
+extract_registration_deadline
 
 def extract_theme(title: str, text: str) -> str:
     """Определяет тематику конкурса на основе ключевых слов."""
