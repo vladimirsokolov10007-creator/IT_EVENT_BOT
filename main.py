@@ -1,7 +1,7 @@
 import feedparser
 import requests
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 from bs4 import BeautifulSoup
 
 # --- НАСТРОЙКИ ---
@@ -9,7 +9,6 @@ BOT_TOKEN = '8925355466:AAFwGby1v-t-JGbCbUnjbt_2aM9JTsnHU_U'
 CHAT_ID = '-1004445860179'
 
 # --- ОСНОВНЫЕ СОРЕВНОВАТЕЛЬНЫЕ КЛЮЧЕВЫЕ СЛОВА ---
-# События ДОЛЖНЫ содержать хотя бы одно из них
 CORE_COMPETITION_KEYWORDS = [
     "хакатон", "hackathon",
     "олимпиада", "olympiad",
@@ -121,7 +120,7 @@ def clean_text(text: str, max_length: int = 80) -> str:
 
 
 def extract_prize(text: str) -> str:
-    """Ищет упоминание призового фонда в тексте. Возвращает строку с суммой/упоминанием или '—'."""
+    """Ищет упоминание призового фонда в тексте."""
     if not text:
         return "—"
     patterns = [
@@ -193,7 +192,6 @@ def extract_registration_deadline(text: str) -> str:
     if not text:
         return "—"
     
-    # Строгий список месяцев, чтобы регулярка не забирала приклеенный текст сторонних блоков
     months = r'(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)'
     
     patterns = [
@@ -246,6 +244,49 @@ def is_competition(title: str, summary: str) -> bool:
         return True
     
     return False
+
+
+def extract_pure_title(text: str) -> str:
+    """Отрезает от заголовка склеенный сопутствующий мусор (города, формат проведения и т.д.)."""
+    if not text:
+        return "—"
+    
+    cleaned = text
+    
+    # 1. Разделяем склеенные слова, где строчные буквы переходят в ЗАГЛАВНЫЕ (например: игруОнлайн -> игру Онлайн)
+    cleaned = re.sub(r'([а-яёa-z0-9])([А-ЯЁA-Z])', r'\1 \2', cleaned)
+    
+    # 2. Если год намертво приклеился к тексту (например, 2024Онлайн -> 2024 Онлайн)
+    cleaned = re.sub(r'(\d{4})([а-яёа-яёa-z])', r'\1 \2', cleaned, flags=re.IGNORECASE)
+    
+    # 3. Если слово приклеилось к сокращению города (например, системыг. -> системы г.)
+    cleaned = re.sub(r'([а-яёa-z])(г\.\s*)', r'\1 \2', cleaned, flags=re.IGNORECASE)
+
+    # 4. Строгие текстовые маркеры для отсечения хвостов (помогают при склейках без пробелов)
+    strict_cut_markers = [
+        r'Онлайн', r'Офлайн', r'Регистрация', r'Организатор', r'Призовой', r'Хакатон:'
+    ]
+    for marker in strict_cut_markers:
+        match = re.search(marker, cleaned)
+        if match and match.start() > 3:  # Режем, только если маркер не в самом начале названия
+            cleaned = cleaned[:match.start()]
+
+    # 5. Регулярные маркеры начала информационного шума с границами слов
+    garbage_markers = [
+        r':', 
+        r'\bонлайн\b', r'\bофлайн\b', r'\bочно\b', r'\bгибрид\b',
+        r'\bрегистрация\b', r'\bорганизатор\b', r'\bпризовой\s+фонд\b',
+        r'\bг\.\s+[а-яёА-ЯЁ]', r'\bв\s+г\.'
+    ]
+    for marker in garbage_markers:
+        match = re.search(marker, cleaned, re.IGNORECASE)
+        if match and match.start() > 3:
+            cleaned = cleaned[:match.start()]
+            break
+            
+    # Чистим от случайных висящих символов и знаков препинания по краям
+    cleaned = re.sub(r'^[\s\.,;:\-–—(]+|[\s\.,;:\-–—(]+$', '', cleaned)
+    return cleaned.strip()
 
 
 def parse_rss_feeds():
@@ -315,8 +356,7 @@ def parse_hackathons_rfc():
             if not title_el:
                 continue
                 
-            # Защищаем дедупликацию от склеенных длинных тайтлов всей карточки
-            title = clean_text(title_el.get_text(strip=True), max_length=100)
+            title = clean_text(title_el.get_text(strip=True), max_length=200)
             if not title or len(title) < 5:
                 continue
 
@@ -351,7 +391,7 @@ def parse_hackathons_rfc():
 
 
 def parse_rsv():
-    """Парсит раздел конкурсов на RSV.ru (Россия — страна возможностей)."""
+    """Парсит раздел конкурсов на RSV.ru."""
     events = []
     try:
         url = "https://rsv.ru/competitions/"
@@ -367,8 +407,7 @@ def parse_rsv():
             if not title_el:
                 continue
                 
-            # Защищаем дедупликацию от склеенных длинных тайтлов всей карточки
-            title = clean_text(title_el.get_text(strip=True), max_length=100)
+            title = clean_text(title_el.get_text(strip=True), max_length=200)
             if not title or len(title) < 5:
                 continue
 
@@ -414,7 +453,7 @@ def parse_rsv():
 
 
 def build_report(events: list) -> str:
-    """Строит отчет в едином формате для всех событий с укороченными заголовками."""
+    """Строит отчет. Пункты Организатор и Тематика полностью удалены."""
     today_str = datetime.now().strftime('%d.%m.%Y')
     report = f"<b>🏆 ИТ-соревнования, олимпиады и конкурсы</b>\n"
     report += f"<i>Подборка на {today_str}</i>\n"
@@ -426,19 +465,18 @@ def build_report(events: list) -> str:
         return report
 
     for i, ev in enumerate(events[:15], 1):
-        # Ограничиваем длину выводимого заголовка до 85 символов для scannability
-        title = escape_html(clean_text(ev['title'], max_length=85))
-        organizer = escape_html(ev.get('organizer', '—'))
+        # Извлекаем чистое название, отсекая города, даты и форматы
+        pure_title = extract_pure_title(ev['title'])
+        title = escape_html(clean_text(pure_title, max_length=85))
+        
         prize = escape_html(ev.get('prize', '—'))
         registration_deadline = escape_html(ev.get('registration_deadline', '—'))
-        theme = escape_html(ev.get('theme', '—'))
         link = ev.get('link', '')
 
+        # Формируем компактный вывод
         report += f"<b>{i}. {title}</b>\n"
-        report += f"👤 {organizer}\n"
         report += f"💰 {prize}\n"
         report += f"📌 {registration_deadline}\n"
-        report += f"🎯 {theme}\n"
         
         if link:
             report += f"<a href='{link}'>→ Ссылка на регистрацию</a>\n"
